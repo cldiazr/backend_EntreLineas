@@ -1,0 +1,233 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── USUARIOS ───────────────────────────────────────────────
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("editor")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales  Sale[]
+  batches SaleBatch[]
+}
+
+// ─── PRODUCTOS Y RECETAS ────────────────────────────────────
+
+model Product {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique
+  unitsProduced Int
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  recipes           RecipeItem[]
+  batchProductions  BatchProduction[]
+}
+
+model RecipeItem {
+  id              Int    @id @default(autoincrement())
+  productId       Int
+  inventoryItemId Int
+  quantityPerUnit Float
+  unit            String
+
+  product       Product       @relation(fields: [productId], references: [id])
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+
+  @@unique([productId, inventoryItemId])
+}
+
+// ─── INVENTARIO ─────────────────────────────────────────────
+
+model InventoryItem {
+  id        Int      @id @default(autoincrement())
+  name      String
+  type      String
+  category  String
+  unit      String
+  stock     Float    @default(0)
+  minStock  Float?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases    InventoryPurchase[]
+  recipes      RecipeItem[]
+  consumptions BatchConsumption[]
+}
+
+model InventoryPurchase {
+  id           Int      @id @default(autoincrement())
+  itemId       Int
+  quantity     Float
+  unitPriceVES Float
+  totalVES     Float
+  supplier     String?
+  notes        String?
+  purchaseDate DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  item InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([purchaseDate], name: "idx_purchase_date")
+}
+
+// ─── TANDAS (PRODUCCIÓN) ────────────────────────────────────
+
+model SaleBatch {
+  id          Int      @id @default(autoincrement())
+  batchNumber Int      @unique
+  date        DateTime @default(now())
+  notes       String?
+  createdBy   Int?
+  createdAt   DateTime @default(now())
+
+  productions  BatchProduction[]
+  consumptions BatchConsumption[]
+  user         User?           @relation(fields: [createdBy], references: [id])
+}
+
+model BatchProduction {
+  id                Int   @id @default(autoincrement())
+  batchId           Int
+  productId         Int
+  quantityProduced  Int
+  unitPriceUSD      Float
+  quantityAvailable Int
+
+  batch   SaleBatch @relation(fields: [batchId], references: [id])
+  product Product   @relation(fields: [productId], references: [id])
+
+  sales Sale[]
+}
+
+// ─── CONSUMO DE INVENTARIO (COGS) ──────────────────────────
+
+model BatchConsumption {
+  id               Int    @id @default(autoincrement())
+  batchId          Int
+  inventoryItemId  Int
+  quantityConsumed Float
+  costPerUnitVES   Float?
+  totalCostVES     Float?
+
+  batch         SaleBatch     @relation(fields: [batchId], references: [id])
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+// ─── VENTAS ─────────────────────────────────────────────────
+
+model Sale {
+  id                Int      @id @default(autoincrement())
+  batchProductionId Int
+  customerName      String
+  quantity          Int
+  unitPriceUSD      Float
+  totalUSD          Float
+  status            String   @default("pending")
+  createdBy         Int?
+  createdAt         DateTime @default(now())
+
+  batchProduction BatchProduction @relation(fields: [batchProductionId], references: [id])
+  payments        Payment[]
+  user            User?           @relation(fields: [createdBy], references: [id])
+
+  @@index([status], name: "idx_sale_status")
+  @@index([createdAt], name: "idx_sale_created")
+}
+
+// ─── PAGOS DE CLIENTES ──────────────────────────────────────
+
+model Payment {
+  id            Int      @id @default(autoincrement())
+  saleId        Int
+  amountVES     Float
+  rateVESPerUSD Float
+  amountUSD     Float
+  date          DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@index([saleId], name: "idx_payment_sale")
+  @@index([date], name: "idx_payment_date")
+}
+
+// ─── BILLETERAS ─────────────────────────────────────────────
+
+model Wallet {
+  id        Int      @id @default(autoincrement())
+  currency  String   @unique
+  balance   Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+}
+
+model Transaction {
+  id            Int      @id @default(autoincrement())
+  walletId      Int
+  type          String
+  amount        Float
+  description   String?
+  referenceType String?
+  referenceId   Int?
+  date          DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@index([walletId, date], name: "idx_transaction_wallet_date")
+}
+
+// ─── CONVERSIONES Y TASAS ──────────────────────────────────
+
+model ExchangeRate {
+  id                Int      @id @default(autoincrement())
+  rateVESPerUSD     Float
+  commissionPercent Float    @default(0)
+  notes             String?
+  date              DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  conversions Conversion[]
+}
+
+model CommissionPreset {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  percentage Float
+  createdAt  DateTime @default(now())
+}
+
+model Conversion {
+  id              Int      @id @default(autoincrement())
+  direction       String
+  amountFrom      Float
+  amountTo        Float
+  rate            Float
+  commissionPct   Float    @default(0)
+  commissionAmount Float   @default(0)
+  totalFrom       Float
+  exchangeRateId  Int?
+  notes           String?
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  exchangeRate ExchangeRate? @relation(fields: [exchangeRateId], references: [id])
+
+  @@index([date], name: "idx_conversion_date")
+}
