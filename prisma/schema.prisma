@@ -88,12 +88,15 @@ model InventoryPurchase {
 // ─── TANDAS (PRODUCCIÓN) ────────────────────────────────────
 
 model SaleBatch {
-  id          Int      @id @default(autoincrement())
-  batchNumber Int      @unique
-  date        DateTime @default(now())
-  notes       String?
-  createdBy   Int?
-  createdAt   DateTime @default(now())
+  id           Int       @id @default(autoincrement())
+  batchNumber  Int       @unique
+  date         DateTime  @default(now())
+  notes        String?
+  createdBy    Int?
+  status       String    @default("active")
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdAt    DateTime  @default(now())
 
   productions  BatchProduction[]
   consumptions BatchConsumption[]
@@ -101,12 +104,15 @@ model SaleBatch {
 }
 
 model BatchProduction {
-  id                Int   @id @default(autoincrement())
+  id                Int       @id @default(autoincrement())
   batchId           Int
   productId         Int
   quantityProduced  Int
   unitPriceUSD      Float
   quantityAvailable Int
+  status            String    @default("active")
+  cancelledAt       DateTime?
+  cancelReason      String?
 
   batch   SaleBatch @relation(fields: [batchId], references: [id])
   product Product   @relation(fields: [productId], references: [id])
@@ -131,15 +137,17 @@ model BatchConsumption {
 // ─── VENTAS ─────────────────────────────────────────────────
 
 model Sale {
-  id                Int      @id @default(autoincrement())
+  id                Int       @id @default(autoincrement())
   batchProductionId Int
   customerName      String
   quantity          Int
   unitPriceUSD      Float
   totalUSD          Float
-  status            String   @default("pending")
+  status            String    @default("pending")
   createdBy         Int?
-  createdAt         DateTime @default(now())
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdAt         DateTime  @default(now())
 
   batchProduction BatchProduction @relation(fields: [batchProductionId], references: [id])
   payments        Payment[]
@@ -152,13 +160,16 @@ model Sale {
 // ─── PAGOS DE CLIENTES ──────────────────────────────────────
 
 model Payment {
-  id            Int      @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   saleId        Int
   amountVES     Float
   rateVESPerUSD Float
   amountUSD     Float
-  date          DateTime @default(now())
-  createdAt     DateTime @default(now())
+  status        String    @default("active")
+  cancelledAt   DateTime?
+  cancelReason  String?
+  date          DateTime  @default(now())
+  createdAt     DateTime  @default(now())
 
   sale Sale @relation(fields: [saleId], references: [id])
 

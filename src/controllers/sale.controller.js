@@ -15,9 +15,13 @@ export async function createSale(req, res) {
 
   const batchProduction = await prisma.batchProduction.findUnique({
     where: { id: Number(batchProductionId) },
+    include: { batch: true },
   });
   if (!batchProduction) {
     return res.status(404).json({ message: "Producción no encontrada" });
+  }
+  if (batchProduction.status === "cancelled" || batchProduction.batch.status === "cancelled") {
+    return res.status(400).json({ message: "No se puede vender sobre una tanda cancelada" });
   }
 
   const qty = Number(quantity);
@@ -129,6 +133,9 @@ export async function createPayment(req, res) {
   if (!sale) {
     return res.status(404).json({ message: "Venta no encontrada" });
   }
+  if (sale.status === "cancelled") {
+    return res.status(400).json({ message: "No se pueden registrar pagos sobre una venta cancelada" });
+  }
   if (sale.status === "paid") {
     return res.status(400).json({ message: "La venta ya está pagada" });
   }
@@ -170,7 +177,8 @@ export async function createPayment(req, res) {
       data: { balance: { increment: amountVes } },
     });
 
-    const paidTotal = sale.payments.reduce((p, pay) => p + pay.amountUSD, 0) + amountUSD;
+    const paidTotal =
+      sale.payments.filter((p) => p.status === "active").reduce((p, pay) => p + pay.amountUSD, 0) + amountUSD;
     if (paidTotal >= sale.totalUSD) {
       await tx.sale.update({
         where: { id: sale.id },
@@ -198,4 +206,41 @@ export async function listPayments(req, res) {
   });
 
   res.json({ payments });
+}
+
+export async function cancelSale(req, res) {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const sale = await prisma.sale.findUnique({
+    where: { id: Number(id) },
+    include: { payments: true },
+  });
+  if (!sale) {
+    return res.status(404).json({ message: "Venta no encontrada" });
+  }
+  if (sale.status === "cancelled") {
+    return res.status(400).json({ message: "La venta ya está cancelada" });
+  }
+
+  const activePayments = sale.payments.filter((p) => p.status === "active");
+  if (activePayments.length > 0) {
+    return res.status(400).json({
+      message: "La venta tiene pagos registrados. Cancela primero sus pagos.",
+    });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.batchProduction.update({
+      where: { id: sale.batchProductionId },
+      data: { quantityAvailable: { increment: sale.quantity } },
+    });
+
+    await tx.sale.update({
+      where: { id: sale.id },
+      data: { status: "cancelled", cancelledAt: new Date(), cancelReason: reason },
+    });
+  });
+
+  res.json({ message: "Venta cancelada" });
 }

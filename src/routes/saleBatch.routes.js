@@ -4,6 +4,7 @@ import {
   createSaleBatch,
   listSaleBatches,
   getSaleBatch,
+  cancelSaleBatch,
 } from "../controllers/saleBatch.controller.js";
 import { auth } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -24,5 +25,12 @@ router.post(
 
 router.get("/", listSaleBatches);
 router.get("/:id", getSaleBatch);
+
+router.patch(
+  "/:id/cancel",
+  body("reason").notEmpty().withMessage("El motivo es requerido"),
+  validate,
+  cancelSaleBatch
+);
 
 export default router;

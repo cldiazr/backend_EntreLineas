@@ -119,3 +119,73 @@ export async function getSaleBatch(req, res) {
 
   res.json({ batch });
 }
+
+export async function cancelSaleBatch(req, res) {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const batch = await prisma.saleBatch.findUnique({
+    where: { id: Number(id) },
+    include: {
+      productions: {
+        include: { sales: { include: { payments: true } } },
+      },
+      consumptions: true,
+    },
+  });
+  if (!batch) {
+    return res.status(404).json({ message: "Tanda no encontrada" });
+  }
+  if (batch.status === "cancelled") {
+    return res.status(400).json({ message: "La tanda ya está cancelada" });
+  }
+
+  const hasPaidSale = batch.productions.some((production) =>
+    production.sales.some(
+      (sale) =>
+        sale.status !== "cancelled" &&
+        sale.payments.some((payment) => payment.status === "active")
+    )
+  );
+  if (hasPaidSale) {
+    return res.status(400).json({
+      message: "La tanda tiene ventas con pagos registrados. Cancela primero sus pagos.",
+    });
+  }
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    for (const production of batch.productions) {
+      await tx.batchProduction.update({
+        where: { id: production.id },
+        data: { status: "cancelled", cancelledAt: now, cancelReason: reason },
+      });
+
+      for (const sale of production.sales) {
+        if (sale.status === "cancelled") continue;
+        await tx.batchProduction.update({
+          where: { id: production.id },
+          data: { quantityAvailable: { increment: sale.quantity } },
+        });
+        await tx.sale.update({
+          where: { id: sale.id },
+          data: { status: "cancelled", cancelledAt: now, cancelReason: reason },
+        });
+      }
+    }
+
+    for (const consumption of batch.consumptions) {
+      await tx.inventoryItem.update({
+        where: { id: consumption.inventoryItemId },
+        data: { stock: { increment: consumption.quantityConsumed } },
+      });
+    }
+
+    await tx.saleBatch.update({
+      where: { id: batch.id },
+      data: { status: "cancelled", cancelledAt: now, cancelReason: reason },
+    });
+  });
+
+  res.json({ message: "Tanda cancelada" });
+}
