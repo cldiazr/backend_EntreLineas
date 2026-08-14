@@ -7,6 +7,7 @@ import {
   createPayment,
   listPayments,
   cancelSale,
+  cancelPayment,
 } from "../controllers/sale.controller.js";
 import { auth } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -42,6 +43,13 @@ router.patch(
   body("reason").notEmpty().withMessage("El motivo es requerido"),
   validate,
   cancelSale
+);
+
+router.patch(
+  "/:id/payments/:paymentId/cancel",
+  body("reason").notEmpty().withMessage("El motivo es requerido"),
+  validate,
+  cancelPayment
 );
 
 export default router;

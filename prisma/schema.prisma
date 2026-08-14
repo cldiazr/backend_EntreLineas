@@ -70,15 +70,18 @@ model InventoryItem {
 }
 
 model InventoryPurchase {
-  id           Int      @id @default(autoincrement())
-  itemId       Int
-  quantity     Float
-  unitPriceVES Float
-  totalVES     Float
-  supplier     String?
-  notes        String?
-  purchaseDate DateTime @default(now())
-  createdAt    DateTime @default(now())
+  id            Int       @id @default(autoincrement())
+  itemId        Int
+  quantity      Float
+  unitPriceVES  Float
+  totalVES      Float
+  supplier      String?
+  notes         String?
+  status        String    @default("active")
+  cancelledAt   DateTime?
+  cancelReason  String?
+  purchaseDate  DateTime  @default(now())
+  createdAt     DateTime  @default(now())
 
   item InventoryItem @relation(fields: [itemId], references: [id])
 
@@ -225,18 +228,21 @@ model CommissionPreset {
 }
 
 model Conversion {
-  id              Int      @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   direction       String
   amountFrom      Float
   amountTo        Float
   rate            Float
-  commissionPct   Float    @default(0)
-  commissionAmount Float   @default(0)
+  commissionPct   Float     @default(0)
+  commissionAmount Float    @default(0)
   totalFrom       Float
+  status          String    @default("active")
+  cancelledAt     DateTime?
+  cancelReason    String?
   exchangeRateId  Int?
   notes           String?
-  date            DateTime @default(now())
-  createdAt       DateTime @default(now())
+  date            DateTime  @default(now())
+  createdAt       DateTime  @default(now())
 
   exchangeRate ExchangeRate? @relation(fields: [exchangeRateId], references: [id])
 

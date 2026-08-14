@@ -3,6 +3,7 @@ import { body } from "express-validator";
 import {
   createInventoryPurchase,
   listInventoryPurchases,
+  cancelInventoryPurchase,
 } from "../controllers/inventoryPurchase.controller.js";
 import { auth } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -21,5 +22,12 @@ router.post(
 );
 
 router.get("/", listInventoryPurchases);
+
+router.patch(
+  "/:id/cancel",
+  body("reason").notEmpty().withMessage("El motivo es requerido"),
+  validate,
+  cancelInventoryPurchase
+);
 
 export default router;

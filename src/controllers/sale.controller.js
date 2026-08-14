@@ -244,3 +244,61 @@ export async function cancelSale(req, res) {
 
   res.json({ message: "Venta cancelada" });
 }
+
+export async function cancelPayment(req, res) {
+  const { id, paymentId } = req.params;
+  const { reason } = req.body;
+
+  const payment = await prisma.payment.findUnique({
+    where: { id: Number(paymentId) },
+    include: { sale: true },
+  });
+  if (!payment) {
+    return res.status(404).json({ message: "Pago no encontrado" });
+  }
+  if (payment.saleId !== Number(id)) {
+    return res.status(400).json({ message: "El pago no pertenece a esta venta" });
+  }
+  if (payment.status === "cancelled") {
+    return res.status(400).json({ message: "El pago ya está cancelado" });
+  }
+
+  const vesWallet = await prisma.wallet.findUnique({ where: { currency: "VES" } });
+  if (!vesWallet) {
+    return res.status(500).json({ message: "Wallet VES no configurada" });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.create({
+      data: {
+        walletId: vesWallet.id,
+        type: "payment_reversal",
+        amount: payment.amountVES,
+        description: `Reversión de pago de ${payment.sale.customerName}`,
+        referenceType: "payment",
+        referenceId: payment.id,
+      },
+    });
+
+    await tx.wallet.update({
+      where: { id: vesWallet.id },
+      data: { balance: { decrement: payment.amountVES } },
+    });
+
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: { status: "cancelled", cancelledAt: new Date(), cancelReason: reason },
+    });
+
+    const activePayments = await tx.payment.findMany({
+      where: { saleId: payment.saleId, status: "active" },
+    });
+    const paidTotal = activePayments.reduce((sum, p) => sum + p.amountUSD, 0);
+    await tx.sale.update({
+      where: { id: payment.saleId },
+      data: { status: paidTotal < payment.sale.totalUSD ? "pending" : "paid" },
+    });
+  });
+
+  res.json({ message: "Pago cancelado" });
+}

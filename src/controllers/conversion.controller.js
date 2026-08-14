@@ -105,3 +105,70 @@ export async function listConversions(req, res) {
 
   res.json({ conversions });
 }
+
+export async function cancelConversion(req, res) {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const conversion = await prisma.conversion.findUnique({ where: { id: Number(id) } });
+  if (!conversion) {
+    return res.status(404).json({ message: "Conversión no encontrada" });
+  }
+  if (conversion.status === "cancelled") {
+    return res.status(400).json({ message: "La conversión ya está cancelada" });
+  }
+
+  const originCurrency = conversion.direction === "VES_TO_USD" ? "VES" : "USD";
+  const destCurrency = conversion.direction === "VES_TO_USD" ? "USD" : "VES";
+
+  const originWallet = await prisma.wallet.findUnique({ where: { currency: originCurrency } });
+  const destWallet = await prisma.wallet.findUnique({ where: { currency: destCurrency } });
+  if (!originWallet || !destWallet) {
+    return res.status(500).json({ message: "Wallets no configuradas" });
+  }
+
+  if (destWallet.balance < conversion.amountTo) {
+    return res.status(400).json({
+      message: "No hay saldo suficiente en la billetera destino para revertir.",
+    });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.wallet.update({
+      where: { id: originWallet.id },
+      data: { balance: { increment: conversion.totalFrom } },
+    });
+    await tx.wallet.update({
+      where: { id: destWallet.id },
+      data: { balance: { decrement: conversion.amountTo } },
+    });
+
+    await tx.transaction.create({
+      data: {
+        walletId: originWallet.id,
+        type: "conversion_reversal",
+        amount: conversion.totalFrom,
+        description: `Reversión de conversión ${conversion.direction} (origen)`,
+        referenceType: "conversion",
+        referenceId: conversion.id,
+      },
+    });
+    await tx.transaction.create({
+      data: {
+        walletId: destWallet.id,
+        type: "conversion_reversal",
+        amount: conversion.amountTo,
+        description: `Reversión de conversión ${conversion.direction} (destino)`,
+        referenceType: "conversion",
+        referenceId: conversion.id,
+      },
+    });
+
+    await tx.conversion.update({
+      where: { id: conversion.id },
+      data: { status: "cancelled", cancelledAt: new Date(), cancelReason: reason },
+    });
+  });
+
+  res.json({ message: "Conversión cancelada" });
+}

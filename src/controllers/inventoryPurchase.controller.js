@@ -82,3 +82,59 @@ export async function listInventoryPurchases(req, res) {
 
   res.json({ purchases });
 }
+
+export async function cancelInventoryPurchase(req, res) {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const purchase = await prisma.inventoryPurchase.findUnique({
+    where: { id: Number(id) },
+    include: { item: true },
+  });
+  if (!purchase) {
+    return res.status(404).json({ message: "Compra no encontrada" });
+  }
+  if (purchase.status === "cancelled") {
+    return res.status(400).json({ message: "La compra ya está cancelada" });
+  }
+  if (purchase.item.stock < purchase.quantity) {
+    return res.status(400).json({
+      message: "El inventario ya fue consumido; no se puede cancelar esta compra.",
+    });
+  }
+
+  const vesWallet = await prisma.wallet.findUnique({ where: { currency: "VES" } });
+  if (!vesWallet) {
+    return res.status(500).json({ message: "Wallet VES no configurada" });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.inventoryItem.update({
+      where: { id: purchase.itemId },
+      data: { stock: { decrement: purchase.quantity } },
+    });
+
+    await tx.wallet.update({
+      where: { id: vesWallet.id },
+      data: { balance: { increment: purchase.totalVES } },
+    });
+
+    await tx.transaction.create({
+      data: {
+        walletId: vesWallet.id,
+        type: "expense_reversal",
+        amount: purchase.totalVES,
+        description: `Reversión de compra de ${purchase.item.name}`,
+        referenceType: "purchase",
+        referenceId: purchase.id,
+      },
+    });
+
+    await tx.inventoryPurchase.update({
+      where: { id: purchase.id },
+      data: { status: "cancelled", cancelledAt: new Date(), cancelReason: reason },
+    });
+  });
+
+  res.json({ message: "Compra cancelada" });
+}
