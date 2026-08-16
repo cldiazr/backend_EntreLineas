@@ -14,8 +14,8 @@ export async function getSummary(req, res) {
   const { start, end } = monthRange(month);
 
   const [payments, purchases, pendingSales, wallets, latestRate] = await Promise.all([
-    prisma.payment.findMany({ where: { date: { gte: start, lt: end } } }),
-    prisma.inventoryPurchase.findMany({ where: { purchaseDate: { gte: start, lt: end } } }),
+    prisma.payment.findMany({ where: { status: "active", date: { gte: start, lt: end } } }),
+    prisma.inventoryPurchase.findMany({ where: { status: "active", purchaseDate: { gte: start, lt: end } } }),
     prisma.sale.findMany({ where: { status: "pending" }, include: { payments: true } }),
     prisma.wallet.findMany(),
     prisma.exchangeRate.findFirst({ orderBy: { date: "desc" } }),
@@ -35,7 +35,11 @@ export async function getSummary(req, res) {
   const pendingCollectionsUSD = roundTo2Decimals(
     pendingSales.reduce(
       (s, sale) =>
-        s + (sale.totalUSD - sale.payments.reduce((sp, py) => sp + py.amountUSD, 0)),
+        s +
+        (sale.totalUSD -
+          sale.payments
+            .filter((py) => py.status === "active")
+            .reduce((sp, py) => sp + py.amountUSD, 0)),
       0
     )
   );
@@ -73,8 +77,8 @@ export async function getMonthly(req, res) {
   for (const label of labels) {
     const { start, end } = monthRange(label);
     const [payments, purchases] = await Promise.all([
-      prisma.payment.findMany({ where: { date: { gte: start, lt: end } } }),
-      prisma.inventoryPurchase.findMany({ where: { purchaseDate: { gte: start, lt: end } } }),
+      prisma.payment.findMany({ where: { status: "active", date: { gte: start, lt: end } } }),
+      prisma.inventoryPurchase.findMany({ where: { status: "active", purchaseDate: { gte: start, lt: end } } }),
     ]);
 
     let revenueUSD = 0;
