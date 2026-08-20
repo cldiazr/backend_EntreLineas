@@ -6,7 +6,15 @@ import { validate } from "../middleware/validate.js";
 
 const router = Router();
 
-router.post("/", auth, createConversion);
+router.post(
+  "/",
+  auth,
+  body("direction").isIn(["VES_TO_USD", "USD_TO_VES"]).withMessage("Dirección inválida"),
+  body("amountFrom").isNumeric().withMessage("Monto inválido"),
+  body("rate").isNumeric().withMessage("Tasa inválida"),
+  validate,
+  createConversion
+);
 router.get("/", auth, listConversions);
 
 router.patch(

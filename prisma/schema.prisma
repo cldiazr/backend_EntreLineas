@@ -228,21 +228,26 @@ model CommissionPreset {
 }
 
 model Conversion {
-  id              Int       @id @default(autoincrement())
-  direction       String
-  amountFrom      Float
-  amountTo        Float
-  rate            Float
-  commissionPct   Float     @default(0)
-  commissionAmount Float    @default(0)
-  totalFrom       Float
-  status          String    @default("active")
-  cancelledAt     DateTime?
-  cancelReason    String?
-  exchangeRateId  Int?
-  notes           String?
-  date            DateTime  @default(now())
-  createdAt       DateTime  @default(now())
+  id                      Int       @id @default(autoincrement())
+  direction               String
+  inputMode               String?   // "receive" | "debit" | null (solo USD→VES)
+  amountFrom              Float
+  amountTo                Float
+  rate                    Float
+  commissionPct           Float     @default(0)
+  commissionAmount        Float     @default(0)
+  commissionPresetAmount  Float     @default(0)
+  commissionBinancePct    Float     @default(0)
+  commissionBinanceFixed  Float     @default(0)
+  commissionBinanceAmount Float     @default(0)
+  totalFrom               Float
+  status                  String    @default("active")
+  cancelledAt             DateTime?
+  cancelReason            String?
+  exchangeRateId          Int?
+  notes                   String?
+  date                    DateTime  @default(now())
+  createdAt               DateTime  @default(now())
 
   exchangeRate ExchangeRate? @relation(fields: [exchangeRateId], references: [id])
 

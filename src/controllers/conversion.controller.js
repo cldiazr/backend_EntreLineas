@@ -1,27 +1,99 @@
 import prisma from "../db.js";
 import { roundTo2Decimals } from "../utils/calculations.js";
 
+const BINANCE_RATE = 0.041;
+const BINANCE_FEE_USD = 0.60;
+
 export async function createConversion(req, res) {
-  const { direction, amountFrom, rate, commissionPct = 0, exchangeRateId = null, notes } = req.body;
+  const { direction, amountFrom, rate, commissionPct = 0, inputMode = null, exchangeRateId = null, notes } = req.body;
 
   if (!["VES_TO_USD", "USD_TO_VES"].includes(direction)) {
     return res.status(400).json({ message: "Dirección inválida" });
   }
 
-  const amount = Number(amountFrom);
   const rateValue = Number(rate);
-  if (amount <= 0 || rateValue <= 0) {
-    return res.status(400).json({ message: "Monto y tasa deben ser mayores a 0" });
+  if (rateValue <= 0) {
+    return res.status(400).json({ message: "La tasa debe ser mayor a 0" });
   }
-
-  const commissionAmount = roundTo2Decimals(amount * (Number(commissionPct) / 100));
-  const totalFrom = roundTo2Decimals(amount + commissionAmount);
-  const amountTo = direction === "VES_TO_USD"
-    ? roundTo2Decimals(amount / rateValue)
-    : roundTo2Decimals(amount * rateValue);
 
   const originCurrency = direction === "VES_TO_USD" ? "VES" : "USD";
   const destCurrency = direction === "VES_TO_USD" ? "USD" : "VES";
+
+  let totalFrom, amountTo, commissionPreset, comisionBinance;
+  let commissionPctVal = 0;
+  let commissionPresetAmount = 0;
+  let commissionBinancePct = 0;
+  let commissionBinanceFixed = 0;
+  let commissionBinanceAmount = 0;
+
+  if (direction === "VES_TO_USD") {
+    // ─── VES → USD: dos comisiones en cascada sobre monto USD ───
+    const presetPct = Number(commissionPct);
+    if (isNaN(presetPct) || presetPct < 0) {
+      return res.status(400).json({ message: "Porcentaje de preset inválido" });
+    }
+
+    const amount = Number(amountFrom);
+    if (amount <= 0) {
+      return res.status(400).json({ message: "El monto debe ser mayor a 0" });
+    }
+
+    const montoUSDBruto = amount / rateValue;
+    commissionPreset = roundTo2Decimals(montoUSDBruto * (presetPct / 100));
+    const despuesPreset = roundTo2Decimals(montoUSDBruto - commissionPreset);
+    comisionBinance = roundTo2Decimals(despuesPreset * BINANCE_RATE);
+    amountTo = roundTo2Decimals(despuesPreset - comisionBinance);
+    totalFrom = amount;
+
+    commissionPctVal = presetPct;
+    commissionPresetAmount = commissionPreset;
+    commissionBinancePct = BINANCE_RATE * 100;
+    commissionBinanceFixed = 0;
+    commissionBinanceAmount = comisionBinance;
+
+  } else if (direction === "USD_TO_VES") {
+    // ─── USD → VES: comisión fija Binance $0.60, dos modos ───
+    if (!["receive", "debit"].includes(inputMode)) {
+      return res.status(400).json({ message: "inputMode requerido: 'receive' o 'debit'" });
+    }
+
+    comisionBinance = BINANCE_FEE_USD;
+    commissionBinanceFixed = BINANCE_FEE_USD;
+    commissionBinancePct = 0;
+    commissionPctVal = 0;
+    commissionPresetAmount = 0;
+
+    if (inputMode === "receive") {
+      // El usuario indica cuántos VES quiere recibir
+      const montoVESDeseados = Number(amountFrom);
+      if (montoVESDeseados <= 0) {
+        return res.status(400).json({ message: "Los VES deseados deben ser mayores a 0" });
+      }
+
+      const montoUSDBruto = montoVESDeseados / rateValue;
+      totalFrom = roundTo2Decimals(montoUSDBruto + BINANCE_FEE_USD);
+      amountTo = montoVESDeseados;
+
+      if (totalFrom <= 0) {
+        return res.status(400).json({ message: "El monto USD a debitar debe ser mayor a 0" });
+      }
+    } else {
+      // "debit": el usuario indica cuántos USD quiere debitar
+      const amount = Number(amountFrom);
+      if (amount <= 0) {
+        return res.status(400).json({ message: "El monto USD a debitar debe ser mayor a 0" });
+      }
+      if (amount < BINANCE_FEE_USD) {
+        return res.status(400).json({ message: `El monto USD a debitar debe ser al menos $${BINANCE_FEE_USD} para cubrir la comisión` });
+      }
+
+      const montoUSDNeto = roundTo2Decimals(amount - BINANCE_FEE_USD);
+      amountTo = roundTo2Decimals(montoUSDNeto * rateValue);
+      totalFrom = amount;
+    }
+
+    commissionBinanceAmount = comisionBinance;
+  }
 
   const originWallet = await prisma.wallet.findUnique({ where: { currency: originCurrency } });
   const destWallet = await prisma.wallet.findUnique({ where: { currency: destCurrency } });
@@ -35,15 +107,22 @@ export async function createConversion(req, res) {
     });
   }
 
+  const totalCommission = roundTo2Decimals(commissionPresetAmount + commissionBinanceAmount);
+
   const conversion = await prisma.$transaction(async (tx) => {
     const created = await tx.conversion.create({
       data: {
         direction,
-        amountFrom: amount,
+        inputMode: inputMode ?? null,
+        amountFrom: totalFrom,
         amountTo,
         rate: rateValue,
-        commissionPct: Number(commissionPct),
-        commissionAmount,
+        commissionPct: commissionPctVal,
+        commissionAmount: totalCommission,
+        commissionPresetAmount,
+        commissionBinancePct,
+        commissionBinanceFixed,
+        commissionBinanceAmount,
         totalFrom,
         exchangeRateId: exchangeRateId ? Number(exchangeRateId) : null,
         notes: notes ?? null,
