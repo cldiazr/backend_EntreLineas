@@ -9,17 +9,29 @@ datasource db {
 
 // ─── USUARIOS ───────────────────────────────────────────────
 
-model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  password  String
-  role      String   @default("editor")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  permissions Json // Permisos granulares por módulo (default {} a nivel aplicación)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  sales  Sale[]
+  users User[]
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  password     String
+  roleId       Int?
+  status       String   @default("pending") // "pending" | "approved" | "rejected"
+  rejectReason String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  role    Role?       @relation(fields: [roleId], references: [id])
+  sales   Sale[]
   batches SaleBatch[]
 }
 

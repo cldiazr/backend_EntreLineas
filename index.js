@@ -14,6 +14,7 @@ import commissionPresetRoutes from "./src/routes/commissionPreset.routes.js";
 import conversionRoutes from "./src/routes/conversion.routes.js";
 import dashboardRoutes from "./src/routes/dashboard.routes.js";
 import userRoutes from "./src/routes/user.routes.js";
+import roleRoutes from "./src/routes/role.routes.js";
 import { notFound, errorHandler } from "./src/middleware/errorHandler.js";
 
 const app = express();
@@ -40,6 +41,7 @@ app.use("/api/commission-presets", commissionPresetRoutes);
 app.use("/api/conversions", conversionRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/roles", roleRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
