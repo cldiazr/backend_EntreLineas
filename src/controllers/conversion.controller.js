@@ -2,7 +2,7 @@ import prisma from "../db.js";
 import { roundTo2Decimals } from "../utils/calculations.js";
 
 const BINANCE_RATE = 0.041;
-const BINANCE_FEE_USD = 0.60;
+const BINANCE_FEE_USD = 0.06;
 
 export async function createConversion(req, res) {
   const { direction, amountFrom, rate, commissionPct = 0, inputMode = null, exchangeRateId = null, notes } = req.body;
