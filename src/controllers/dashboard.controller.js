@@ -13,12 +13,13 @@ export async function getSummary(req, res) {
   const month = req.query.month || new Date().toISOString().slice(0, 7);
   const { start, end } = monthRange(month);
 
-  const [payments, purchases, pendingSales, wallets, latestRate] = await Promise.all([
+  const [payments, purchases, pendingSales, wallets, latestRate, employeePayments] = await Promise.all([
     prisma.payment.findMany({ where: { status: "active", date: { gte: start, lt: end } } }),
     prisma.inventoryPurchase.findMany({ where: { status: "active", purchaseDate: { gte: start, lt: end } } }),
     prisma.sale.findMany({ where: { status: "pending" }, include: { payments: true } }),
     prisma.wallet.findMany(),
     prisma.exchangeRate.findFirst({ orderBy: { date: "desc" } }),
+    prisma.employeePayment.findMany({ where: { status: "active", date: { gte: start, lt: end } } }),
   ]);
 
   const totalRevenueUSD = roundTo2Decimals(payments.reduce((s, p) => s + p.amountUSD, 0));
@@ -27,11 +28,14 @@ export async function getSummary(req, res) {
   let totalExpensesUSD = 0;
   for (const p of purchases) {
     const rate = await getRateForDate(p.purchaseDate);
+    if (rate <= 0) continue;
     totalExpensesUSD += p.totalVES / rate;
   }
   totalExpensesUSD = roundTo2Decimals(totalExpensesUSD);
 
   const netProfitUSD = roundTo2Decimals(totalRevenueUSD - totalExpensesUSD);
+  const totalEmployeePaymentsUSD = roundTo2Decimals(employeePayments.reduce((s, p) => s + p.amountUSD, 0));
+  const retainedProfitUSD = roundTo2Decimals(netProfitUSD - totalEmployeePaymentsUSD);
   const pendingCollectionsUSD = roundTo2Decimals(
     pendingSales.reduce(
       (s, sale) =>
@@ -54,6 +58,8 @@ export async function getSummary(req, res) {
       totalExpensesUSD,
       netProfitUSD,
       pendingCollectionsUSD,
+      totalEmployeePaymentsUSD,
+      retainedProfitUSD,
     },
     wallets: { VES: walletsMap.VES ?? 0, USD: walletsMap.USD ?? 0 },
     latestRateVESPerUSD: latestRate?.rateVESPerUSD ?? null,
@@ -86,6 +92,7 @@ export async function getMonthly(req, res) {
     let expensesUSD = 0;
     for (const p of purchases) {
       const rate = await getRateForDate(p.purchaseDate);
+      if (rate <= 0) continue;
       expensesUSD += p.totalVES / rate;
     }
 

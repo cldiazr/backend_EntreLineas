@@ -21,6 +21,7 @@ const ALL_MODULES = {
   gastos: ["read", "create", "cancel"],
   conversiones: ["read", "create", "cancel"],
   comisiones: ["read", "create", "delete"],
+  pagosEmpleados: ["read", "create", "cancel"],
   usuarios: ["read", "create", "update", "approve"],
 };
 
@@ -38,6 +39,7 @@ const EDITOR_PERMISSIONS = {
   gastos: ["read", "create"],
   conversiones: ["read", "create"],
   comisiones: ["read"],
+  pagosEmpleados: ["read", "create"],
 };
 
 async function main() {

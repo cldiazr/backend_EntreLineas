@@ -20,6 +20,19 @@ export async function listUsers(req, res) {
   res.json({ users, pendingCount });
 }
 
+export async function listApprovedUsers(req, res) {
+  const users = await prisma.user.findMany({
+    where: {
+      status: "approved",
+      role: { isNot: { name: "Admin" } },
+    },
+    select: { id: true, name: true, email: true, role: { select: { id: true, name: true } } },
+    orderBy: { name: "asc" },
+  });
+
+  res.json({ users });
+}
+
 export async function approveUser(req, res) {
   const { id } = req.params;
   const { roleId } = req.body;
