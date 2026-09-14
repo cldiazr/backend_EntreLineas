@@ -15,7 +15,7 @@ export async function createInventoryPurchase(req, res) {
     return res.status(400).json({ message: "Cantidad y precio deben ser válidos" });
   }
 
-  const totalVES = roundTo2Decimals(qty * unitPrice);
+  const totalVES = roundTo2Decimals(unitPrice);
   const vesWallet = await prisma.wallet.findUnique({ where: { currency: "VES" } });
   if (!vesWallet) {
     return res.status(500).json({ message: "Wallet VES no configurada" });
