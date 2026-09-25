@@ -8,6 +8,8 @@ const saleInclude = {
       batch: { select: { id: true, batchNumber: true, date: true } },
     },
   },
+  user: { select : { id : true, name : true } },
+  payments : { orderBy: { date: "asc" } },
 };
 
 export async function createSale(req, res) {
@@ -67,8 +69,10 @@ export async function createSale(req, res) {
 
 export async function listSales(req, res) {
   const { status, customerName, productId, dateFrom, dateTo } = req.query;
+  const createdBy = Number(req.query.createdBy);
 
   const where = {};
+  if (Number.isInteger(createdBy) && createdBy > 0) where.createdBy = createdBy;
   if (status) where.status = status;
   if (customerName) where.customerName = { contains: customerName };
   if (productId) where.batchProduction = { productId: Number(productId) };
